@@ -110,6 +110,8 @@ func (p *updatePhaseSystem) Execute(ctx context.Context) error {
 	if p.Server.Runtime.Update != nil {
 		config.Runtime.To = p.Server.Runtime.Update.Package
 		config.Runtime.ConfigPackage = &storage.PackageUpdate{
+			// FIXME: this is required to update from 5.0
+			// From: installedConfigPackage,
 			To: p.Server.Runtime.Update.ConfigPackage,
 		}
 	}
