@@ -112,6 +112,7 @@ func DeployAgents(ctx context.Context, req DeployAgentsRequest) error {
 	if err := req.Check(); err != nil {
 		return trace.Wrap(err)
 	}
+	req.WithField("req", req).Info("Deploy agents.")
 	errors := make(chan error, len(req.Servers))
 	leaderProcessScheduled := false
 	for _, server := range req.Servers {
