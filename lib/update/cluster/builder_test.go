@@ -66,7 +66,7 @@ func (s *PlanSuite) TestPlanWithRuntimeUpdate(c *check.C) {
 				Enabled:    true,
 			},
 		},
-		dnsConfig:  storage.DefaultDNSConfig,
+		dnsConfig: storage.DefaultDNSConfig,
 		// Use an alternative (other than first) master node as leader
 		leadMaster: updates[1],
 	}

@@ -92,6 +92,10 @@ func (p *updatePhaseSystem) PostCheck(context.Context) error {
 
 // Execute runs system update on the node
 func (p *updatePhaseSystem) Execute(ctx context.Context) error {
+	runtimeConfig, err := p.getInstalledRuntimeConfig()
+	if err != nil {
+		return trace.Wrap(err, "failed to locate runtime configuration package")
+	}
 	config := system.Config{
 		ChangesetID: p.OperationID,
 		Backend:     p.Backend,
@@ -110,9 +114,8 @@ func (p *updatePhaseSystem) Execute(ctx context.Context) error {
 	if p.Server.Runtime.Update != nil {
 		config.Runtime.To = p.Server.Runtime.Update.Package
 		config.Runtime.ConfigPackage = &storage.PackageUpdate{
-			// FIXME: this is required to update from 5.0
-			// From: installedConfigPackage,
-			To: p.Server.Runtime.Update.ConfigPackage,
+			From: *runtimeConfig,
+			To:   p.Server.Runtime.Update.ConfigPackage,
 		}
 	}
 	if p.Server.Teleport.Update != nil {
@@ -136,8 +139,16 @@ func (p *updatePhaseSystem) Execute(ctx context.Context) error {
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	err = updater.Update(ctx, true)
+	err = updater.Update(ctx, system.WithStatus(true))
 	return trace.Wrap(err)
+}
+
+func (p *updatePhaseSystem) getInstalledRuntimeConfig() (*loc.Locator, error) {
+	runtimeConfig, err := pack.FindInstalledConfigPackage(p.HostLocalPackages, p.Server.Runtime.Installed)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return runtimeConfig, nil
 }
 
 // Rollback runs rolls back the system upgrade on the node

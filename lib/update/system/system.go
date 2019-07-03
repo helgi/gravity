@@ -52,7 +52,7 @@ func New(config Config) (*System, error) {
 }
 
 // Update applies updates to the system packages specified with config
-func (r *System) Update(ctx context.Context, withStatus bool) error {
+func (r *System) Update(ctx context.Context, withStatus WithStatus) error {
 	if err := r.Config.PackageUpdates.checkAndSetDefaults(); err != nil {
 		return trace.Wrap(err)
 	}
@@ -104,6 +104,9 @@ func (r *System) Update(ctx context.Context, withStatus bool) error {
 	r.WithField("changeset", changeset).Info("System successfully updated.")
 	return nil
 }
+
+// WithStatus controls whether the update waits for node to become healthy
+type WithStatus bool
 
 // Rollback rolls back system to the specified changesetID or the last update if changesetID is not specified
 func (r *System) Rollback(ctx context.Context, withStatus bool) (err error) {
@@ -551,6 +554,7 @@ func copyGravityToPlanet(newPackage loc.Locator, packages pack.PackageService, p
 func labelsForPackageUpdate(packages pack.PackageService, update storage.PackageUpdate) (labelUpdates []pack.LabelUpdate) {
 	return append(labelUpdates,
 		pack.LabelUpdate{
+			// FIXME: this will fail for empty From
 			Locator: update.From,
 			Remove:  []string{pack.InstalledLabel},
 		},

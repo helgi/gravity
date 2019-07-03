@@ -59,3 +59,7 @@ func GetProvisionerFromProvider(provider string) (string, error) {
 		return "", trace.BadParameter("unknown provider %q", provider)
 	}
 }
+
+// IntermediateRuntimePackage identifies the intermediate runtime package
+// used to bridge updates from 5.0
+var IntermediateRuntimePackage = loc.MustParseLocator("gravitational.io/planet:5.2.23-11109")

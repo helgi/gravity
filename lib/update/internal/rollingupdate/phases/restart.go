@@ -84,7 +84,7 @@ func (r *restart) Execute(ctx context.Context) error {
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	err = updater.Update(ctx, true)
+	err = updater.Update(ctx, system.WithStatus(true))
 	return trace.Wrap(err)
 }
 
