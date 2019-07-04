@@ -18,7 +18,9 @@ limitations under the License.
 // mismatch and as such is discouraged for future use.
 package schema
 
-import "github.com/gravitational/trace"
+import (
+	"github.com/gravitational/trace"
+)
 
 // IsAWSProvider determines if specified provider string refers to AWS provider
 func IsAWSProvider(provider string) bool {
@@ -59,7 +61,3 @@ func GetProvisionerFromProvider(provider string) (string, error) {
 		return "", trace.BadParameter("unknown provider %q", provider)
 	}
 }
-
-// IntermediateRuntimePackage identifies the intermediate runtime package
-// used to bridge updates from 5.0
-var IntermediateRuntimePackage = loc.MustParseLocator("gravitational.io/planet:5.2.23-11109")

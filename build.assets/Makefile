@@ -470,9 +470,11 @@ push-teleport: $(TELEPORT_OUT)
 # dependency: planet master/node packages
 #
 .PHONY: planet
-planet: pull-planet build-planet
+planet: pull-planet pull-bridge-planet build-planet
 	$(GRAVITY) package delete $(PLANET_PKG) $(DELETE_OPTS) && \
-		$(GRAVITY) package import $(PLANET_OUT) $(PLANET_PKG)
+		$(GRAVITY) package import $(PLANET_OUT) $(PLANET_PKG) && \
+		$(GRAVITY) package delete $(PLANET_BRIDGE_PKG) $(DELETE_OPTS) && \
+		$(GRAVITY) package import $(PLANET_BRIDGE_OUT) $(PLANET_BRIDGE_PKG)
 
 .PHONY: build-planet
 build-planet:
@@ -492,6 +494,11 @@ build-planet-sub:
 .PHONY: pull-planet
 pull-planet:
 	-$(AWS) s3 sync $(S3_OPTS) $(BUILD_BUCKET_URL)/planet/$(PLANET_TAG) $(PLANET_BINDIR)
+
+
+.PHONY: pull-bridge-planet
+pull-bridge-planet:
+	-$(AWS) s3 sync $(S3_OPTS) $(BUILD_BUCKET_URL)/planet/$(PLANET_BRIDGE_TAG) $(PLANET_BRIDGE_BINDIR)
 
 
 #

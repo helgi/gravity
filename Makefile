@@ -44,6 +44,7 @@ TELEPORT_TAG = 3.0.5
 TELEPORT_REPOTAG := v$(TELEPORT_TAG)
 PLANET_TAG := 5.5.20-$(K8S_VER_SUFFIX)
 PLANET_BRANCH := $(PLANET_TAG)
+PLANET_BRIDGE_TAG := 5.2.23-11109
 K8S_APP_TAG := $(GRAVITY_TAG)
 TELEKUBE_APP_TAG := $(GRAVITY_TAG)
 WORMHOLE_APP_TAG := $(GRAVITY_TAG)
@@ -71,9 +72,9 @@ TELEKUBE_GRAVITY_PKG := gravitational.io/gravity_$(OS)_$(ARCH):$(GRAVITY_TAG)
 TELEKUBE_TELE_PKG := gravitational.io/tele_$(OS)_$(ARCH):$(GRAVITY_TAG)
 TF_PROVIDER_GRAVITY_PKG := gravitational.io/terraform-provider-gravity_$(OS)_$(ARCH):$(GRAVITY_TAG)
 TF_PROVIDER_GRAVITYENTERPRISE_PKG := gravitational.io/terraform-provider-gravityenterprise_$(OS)_$(ARCH):$(GRAVITY_TAG)
-
 TELEPORT_PKG := gravitational.io/teleport:$(TELEPORT_TAG)
 PLANET_PKG := gravitational.io/planet:$(PLANET_TAG)
+PLANET_BRIDGE_PKG := gravitational.io/planet:$(PLANET_BRIDGE_TAG)
 WEB_ASSETS_PKG := gravitational.io/web-assets:$(GRAVITY_TAG)
 GRAVITY_PKG := gravitational.io/gravity:$(GRAVITY_TAG)
 DNS_APP_PKG := gravitational.io/dns-app:$(DNS_APP_TAG)
@@ -101,6 +102,7 @@ PLANET_DIR := $(BUILDDIR)/planet
 PLANET_SRCDIR := $(PLANET_DIR)/src
 PLANET_BUILDDIR := $(PLANET_DIR)/$(PLANET_TAG)
 PLANET_BINDIR := $(PLANET_BUILDDIR)/bin
+PLANET_BRIDGE_BINDIR := $(PLANET_DIR)/$(PLANET_BRIDGE_TAG)/bin
 TELEPORT_BUILDDIR := $(BUILDDIR)/teleport
 TELEPORT_SRCDIR := $(TELEPORT_BUILDDIR)/src
 TELEPORT_BINDIR := $(TELEPORT_BUILDDIR)/bin/$(TELEPORT_TAG)
@@ -119,6 +121,7 @@ PACKAGES_DIR ?= $(GRAVITY_BUILDDIR)/packages
 TELEPORT_TARBALL := teleport-$(TELEPORT_TAG).tar.gz
 TELEPORT_OUT := $(BUILDDIR)/$(TELEPORT_TARBALL)
 PLANET_OUT := $(PLANET_BINDIR)/planet.tar.gz
+PLANET_BRIDGE_OUT := $(PLANET_BRIDGE_BINDIR)/planet.tar.gz
 LOGGING_APP_OUT := $(BUILDDIR)/logging-app-$(LOGGING_APP_TAG).tar.gz
 MONITORING_APP_OUT := $(BUILDDIR)/monitoring-app-$(MONITORING_APP_TAG).tar.gz
 BANDWAGON_OUT := $(BUILDDIR)/bandwagon-$(BANDWAGON_TAG).tar.gz
@@ -339,9 +342,10 @@ ci:
 .PHONY: packages
 packages:
 	if [ -z "$(DEV_PLANET)" ]; then \
-	  $(MAKE) planet-packages; \
+	  $(MAKE) planet-package && \
+	  $(MAKE) planet-bridge-package; \
 	else \
-	  $(MAKE) dev-planet-packages; \
+	  $(MAKE) dev-planet-package; \
 	fi;
 
 # binary packages for quick download
@@ -411,11 +415,18 @@ telekube-packages:
 	- $(GRAVITY) app delete $(TELEKUBE_APP_PKG) $(DELETE_OPTS) && \
 	  $(GRAVITY) app import $(TELEKUBE_APP_OUT) --version=$(TELEKUBE_APP_TAG) $(VENDOR_OPTS)
 
-.PHONY: planet-packages
-planet-packages:
+.PHONY: planet-package
+planet-package:
 # planet master - RUNC container with k8s master
 	$(GRAVITY) package delete $(PLANET_PKG) $(DELETE_OPTS) && \
 	$(GRAVITY) package import $(PLANET_OUT) $(PLANET_PKG) \
+		--labels=purpose:runtime \
+		--ops-url=$(OPS_URL)
+
+.PHONY: planet-bridge-package
+planet-bridge-package:
+	$(GRAVITY) package delete $(PLANET_BRIDGE_PKG) $(DELETE_OPTS) && \
+	$(GRAVITY) package import $(PLANET_BRIDGE_OUT) $(PLANET_BRIDGE_PKG) \
 		--labels=purpose:runtime \
 		--ops-url=$(OPS_URL)
 
@@ -431,9 +442,9 @@ web-assets:
 	$(GRAVITY) package import $(WEB_ASSETS_OUT) $(WEB_ASSETS_PKG) --ops-url=$(OPS_URL)
 
 
-.PHONY: dev-planet-packages
-dev-planet-packages: PLANET_OUT := $(GOPATH)/src/github.com/gravitational/planet/build/planet.tar.gz
-dev-planet-packages: planet-packages
+.PHONY: dev-planet-package
+dev-planet-package: PLANET_OUT := $(GOPATH)/src/github.com/gravitational/planet/build/planet.tar.gz
+dev-planet-package: planet-package
 
 #
 # publish-artifacts uploads build artifacts to the distribution Ops Center

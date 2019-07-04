@@ -15,3 +15,8 @@ func IsLegacyRuntimePackage(loc Locator) bool {
 		return false
 	}
 }
+
+// IntermediateRuntimePackage identifies the intermediate runtime package
+// used to bridge updates from 5.0.
+// Note, this version needs to be in sync with the version in the Makefile
+var IntermediateRuntimePackage = MustParseLocator("gravitational.io/planet:5.2.23-11109")

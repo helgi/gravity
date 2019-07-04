@@ -274,6 +274,7 @@ func (b *Builder) SyncPackageCache(runtimeVersion *semver.Version) error {
 	if err != nil {
 		return trace.Wrap(err)
 	}
+	// FIXME(dmitri): this should only pull packages actually missing from local package cache
 	b.Infof("Synchronizing package cache with %v.", repository)
 	b.NextStep("Downloading dependencies from %v", repository)
 	syncer, err := b.NewSyncer(b)

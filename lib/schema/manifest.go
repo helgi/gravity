@@ -453,11 +453,11 @@ func (d Dependencies) ByName(names ...string) (*loc.Locator, error) {
 
 // GetPackages returns a list of all package dependencies
 func (d Dependencies) GetPackages() []loc.Locator {
-	packages := make([]loc.Locator, 0, len(d.Apps))
+	packages := make([]loc.Locator, 0, len(d.Packages)+1)
 	for _, dep := range d.Packages {
 		packages = append(packages, dep.Locator)
 	}
-	return packages
+	return append(packages, loc.IntermediateRuntimePackage)
 }
 
 // GetApps returns a list of all application dependencies
