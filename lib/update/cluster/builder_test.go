@@ -107,9 +107,8 @@ func (s *PlanSuite) TestPlanWithRuntimeAppsUpdate(c *check.C) {
 			params.checks(),
 			params.preUpdate(),
 			params.coreDNS(),
-			params.bootstrap(),
 			params.masters(updates[0:1],
-				"/checks", "/bootstrap", "/pre-update", "/coredns"),
+				"/checks", "/pre-update", "/coredns"),
 			params.nodes(),
 			params.etcd(updates[0:1]),
 			params.migration("/etcd"),
@@ -235,8 +234,7 @@ func (s *PlanSuite) TestPlanWithIntermediateRuntimeUpdate(c *check.C) {
 			params.checks(),
 			params.preUpdate(),
 			params.coreDNS(),
-			params.bootstrap(),
-			params.mastersIntermediate(intermediateUpdates[0:1]), // 5
+			params.mastersIntermediate(intermediateUpdates[0:1]),
 			params.nodesIntermediate(),
 			params.etcd(updates[0:1]),
 			params.masters(updates[0:1], "/etcd"),
@@ -353,7 +351,7 @@ func (s *PlanSuite) TestCorrectlyDeterminesWhetherToUpdateEtcd(c *check.C) {
 	}
 	version, err := shouldUpdateEtcd(b)
 	c.Assert(err, check.IsNil)
-	c.Assert(version, check.Equals, &etcdVersion{
+	c.Assert(version, check.DeepEquals, &etcdVersion{
 		installed: "3.3.2",
 		update:    "3.3.3",
 	})
@@ -393,13 +391,15 @@ func newBuilder(c *check.C, params params) phaseBuilder {
 				Manifest: []byte(params.updateAppManifest),
 			},
 		},
-		links:           params.links,
-		trustedClusters: params.trustedClusters,
-		etcd:            params.etcdVersion,
-		updateCoreDNS:   params.updateCoreDNS,
-		leadMaster:      params.leadMaster,
-		runtimeUpdates:  params.runtimeUpdates,
-		appUpdates:      params.appUpdates,
+		links:                   params.links,
+		trustedClusters:         params.trustedClusters,
+		etcd:                    params.etcdVersion,
+		updateCoreDNS:           params.updateCoreDNS,
+		leadMaster:              params.leadMaster,
+		runtimeUpdates:          params.runtimeUpdates,
+		appUpdates:              params.appUpdates,
+		changesetID:             "id",
+		intermediateChangesetID: "id2",
 	}
 	gravityPackage, err := builder.updateRuntime.Manifest.Dependencies.ByName(
 		constants.GravityPackage)
@@ -468,65 +468,17 @@ func (r *params) coreDNS() storage.OperationPhase {
 	}
 }
 
-func (r *params) bootstrap() storage.OperationPhase {
-	return storage.OperationPhase{
-		ID:          "/bootstrap",
-		Description: "Bootstrap update operation on nodes",
-		Requires:    []string{"/init"},
-		Phases: []storage.OperationPhase{
-			{
-				ID:          "/bootstrap/node-1",
-				Executor:    updateBootstrap,
-				Description: `Bootstrap node "node-1"`,
-				Data: &storage.OperationPhaseData{
-					ExecServer:       &servers[0],
-					Package:          &r.updateApp,
-					InstalledPackage: &r.installedApp,
-					Update: &storage.UpdateOperationData{
-						Servers: updates[0:1],
-					},
-				},
-			},
-			{
-				ID:          "/bootstrap/node-2",
-				Executor:    updateBootstrap,
-				Description: `Bootstrap node "node-2"`,
-				Data: &storage.OperationPhaseData{
-					ExecServer:       &servers[1],
-					Package:          &r.updateApp,
-					InstalledPackage: &r.installedApp,
-					Update: &storage.UpdateOperationData{
-						Servers: updates[1:2],
-					},
-				},
-			},
-			{
-				ID:          "/bootstrap/node-3",
-				Executor:    updateBootstrap,
-				Description: `Bootstrap node "node-3"`,
-				Data: &storage.OperationPhaseData{
-					ExecServer:       &servers[2],
-					Package:          &r.updateApp,
-					InstalledPackage: &r.installedApp,
-					Update: &storage.UpdateOperationData{
-						Servers: updates[2:3],
-					},
-				},
-			},
-		},
-	}
-}
-
 func (r *params) masters(otherMasters []storage.UpdateServer, requires ...string) storage.OperationPhase {
 	t := func(format string, node storage.UpdateServer) string {
 		return fmt.Sprintf(format, node.Hostname)
 	}
+	changesetID := "id"
 	return storage.OperationPhase{
 		ID:          "/masters",
 		Description: "Update master nodes",
 		Requires:    requires,
 		Phases: []storage.OperationPhase{
-			r.leaderMasterPhase("/masters", r.leadMaster),
+			r.leaderMasterPhase("/masters", r.leadMaster, changesetID),
 			{
 				ID:          t("/masters/elect-%v", r.leadMaster),
 				Executor:    electionStatus,
@@ -540,7 +492,7 @@ func (r *params) masters(otherMasters []storage.UpdateServer, requires ...string
 				},
 				Requires: []string{t("/masters/%v", r.leadMaster)},
 			},
-			r.otherMasterPhase(otherMasters[0], "/masters", r.leadMaster),
+			r.otherMasterPhase(otherMasters[0], "/masters", r.leadMaster, changesetID),
 		},
 	}
 }
@@ -556,12 +508,13 @@ func (r *params) mastersIntermediate(otherMasters []storage.UpdateServer) storag
 			break
 		}
 	}
+	changesetID := "id2"
 	return storage.OperationPhase{
 		ID:          "/masters-intermediate",
 		Description: "Update master nodes to intermediate runtime",
-		Requires:    []string{"/checks", "/bootstrap", "/pre-update", "/coredns"},
+		Requires:    []string{"/checks", "/pre-update", "/coredns"},
 		Phases: []storage.OperationPhase{
-			r.leaderMasterPhase("/masters-intermediate", leadMaster),
+			r.leaderMasterPhase("/masters-intermediate", leadMaster, changesetID),
 			{
 				ID:          t("/masters-intermediate/elect-%v", leadMaster),
 				Executor:    electionStatus,
@@ -575,12 +528,12 @@ func (r *params) mastersIntermediate(otherMasters []storage.UpdateServer) storag
 				},
 				Requires: []string{t("/masters-intermediate/%v", leadMaster)},
 			},
-			r.otherMasterPhase(otherMasters[0], "/masters-intermediate", leadMaster),
+			r.otherMasterPhase(otherMasters[0], "/masters-intermediate", leadMaster, changesetID),
 		},
 	}
 }
 
-func (r *params) leaderMasterPhase(parent string, leadMaster storage.UpdateServer) storage.OperationPhase {
+func (r *params) leaderMasterPhase(parent string, leadMaster storage.UpdateServer, id string) storage.OperationPhase {
 	p := func(format string) string {
 		return fmt.Sprintf(path.Join(parent, format), leadMaster.Hostname)
 	}
@@ -591,10 +544,12 @@ func (r *params) leaderMasterPhase(parent string, leadMaster storage.UpdateServe
 		ID:          p("%v"),
 		Description: t("Update system software on master node %q"),
 		Phases: []storage.OperationPhase{
+			r.bootstrap(leadMaster, parent),
 			{
 				ID:          p("%v/kubelet-permissions"),
 				Description: t("Add permissions to kubelet on %q"),
 				Executor:    kubeletPermissions,
+				Requires:    []string{p("%v/bootstrap")},
 				Data: &storage.OperationPhaseData{
 					Server: &leadMaster.Server,
 				},
@@ -628,7 +583,8 @@ func (r *params) leaderMasterPhase(parent string, leadMaster storage.UpdateServe
 				Data: &storage.OperationPhaseData{
 					ExecServer: &leadMaster.Server,
 					Update: &storage.UpdateOperationData{
-						Servers: []storage.UpdateServer{leadMaster},
+						Servers:     []storage.UpdateServer{leadMaster},
+						ChangesetID: id,
 					},
 				},
 				Requires: []string{p("%v/drain")},
@@ -647,7 +603,7 @@ func (r *params) leaderMasterPhase(parent string, leadMaster storage.UpdateServe
 	}
 }
 
-func (r *params) otherMasterPhase(server storage.UpdateServer, parent string, leadMaster storage.UpdateServer) storage.OperationPhase {
+func (r *params) otherMasterPhase(server storage.UpdateServer, parent string, leadMaster storage.UpdateServer, id string) storage.OperationPhase {
 	p := func(format string) string {
 		return fmt.Sprintf(path.Join(parent, format), server.Hostname)
 	}
@@ -659,10 +615,12 @@ func (r *params) otherMasterPhase(server storage.UpdateServer, parent string, le
 		Description: t("Update system software on master node %q"),
 		Requires:    []string{fmt.Sprintf("%v/elect-%v", parent, leadMaster.Hostname)},
 		Phases: []storage.OperationPhase{
+			r.bootstrap(server, parent),
 			{
 				ID:          p("%v/drain"),
 				Executor:    drainNode,
 				Description: t("Drain node %q"),
+				Requires:    []string{p("%v/bootstrap")},
 				Data: &storage.OperationPhaseData{
 					Server:     &server.Server,
 					ExecServer: &leadMaster.Server,
@@ -675,7 +633,8 @@ func (r *params) otherMasterPhase(server storage.UpdateServer, parent string, le
 				Data: &storage.OperationPhaseData{
 					ExecServer: &server.Server,
 					Update: &storage.UpdateOperationData{
-						Servers: []storage.UpdateServer{server},
+						Servers:     []storage.UpdateServer{server},
+						ChangesetID: id,
 					},
 				},
 				Requires: []string{p("%v/drain")},
@@ -717,28 +676,30 @@ func (r *params) otherMasterPhase(server storage.UpdateServer, parent string, le
 }
 
 func (r *params) nodes() storage.OperationPhase {
+	changesetID := "id"
 	return storage.OperationPhase{
 		ID:          "/nodes",
 		Description: "Update regular nodes",
 		Requires:    []string{"/masters"},
 		Phases: []storage.OperationPhase{
-			r.nodePhase(updates[2], "/nodes"),
+			r.nodePhase(updates[2], "/nodes", changesetID),
 		},
 	}
 }
 
 func (r *params) nodesIntermediate() storage.OperationPhase {
+	changesetID := "id2"
 	return storage.OperationPhase{
 		ID:          "/nodes-intermediate",
 		Description: "Update regular nodes to intermediate runtime",
 		Requires:    []string{"/masters-intermediate"},
 		Phases: []storage.OperationPhase{
-			r.nodePhase(intermediateUpdates[2], "/nodes-intermediate"),
+			r.nodePhase(intermediateUpdates[2], "/nodes-intermediate", changesetID),
 		},
 	}
 }
 
-func (r *params) nodePhase(server storage.UpdateServer, parent string) storage.OperationPhase {
+func (r *params) nodePhase(server storage.UpdateServer, parent, id string) storage.OperationPhase {
 	p := func(format string) string {
 		return fmt.Sprintf(path.Join(parent, format), server.Hostname)
 	}
@@ -749,10 +710,12 @@ func (r *params) nodePhase(server storage.UpdateServer, parent string) storage.O
 		ID:          p("%v"),
 		Description: t("Update system software on node %q"),
 		Phases: []storage.OperationPhase{
+			r.bootstrap(server, parent),
 			{
 				ID:          p("%v/drain"),
 				Executor:    drainNode,
 				Description: t("Drain node %q"),
+				Requires:    []string{p("%v/bootstrap")},
 				Data: &storage.OperationPhaseData{
 					Server:     &server.Server,
 					ExecServer: &r.leadMaster.Server,
@@ -765,7 +728,8 @@ func (r *params) nodePhase(server storage.UpdateServer, parent string) storage.O
 				Data: &storage.OperationPhaseData{
 					ExecServer: &server.Server,
 					Update: &storage.UpdateOperationData{
-						Servers: []storage.UpdateServer{server},
+						Servers:     []storage.UpdateServer{server},
+						ChangesetID: id,
 					},
 				},
 				Requires: []string{p("%v/drain")},
@@ -789,6 +753,22 @@ func (r *params) nodePhase(server storage.UpdateServer, parent string) storage.O
 					ExecServer: &r.leadMaster.Server,
 				},
 				Requires: []string{p("%v/uncordon")},
+			},
+		},
+	}
+}
+
+func (r *params) bootstrap(server storage.UpdateServer, parent string) storage.OperationPhase {
+	return storage.OperationPhase{
+		ID:          fmt.Sprintf("%v/%v/bootstrap", parent, server.Hostname),
+		Executor:    updateBootstrap,
+		Description: fmt.Sprintf("Bootstrap node %q", server.Hostname),
+		Data: &storage.OperationPhaseData{
+			ExecServer:       &server.Server,
+			Package:          &r.updateApp,
+			InstalledPackage: &r.installedApp,
+			Update: &storage.UpdateOperationData{
+				Servers: []storage.UpdateServer{server},
 			},
 		},
 	}

@@ -77,6 +77,9 @@ type BuildCmd struct {
 	SkipVersionCheck *bool
 	// Parallel defines the number of tasks to execute concurrently
 	Parallel *int
+	// SupportLegacyUpgrade specifies whether to build an installer with support
+	// for upgrading 5.0.x version
+	SupportLegacyUpgrade *bool
 	// Quiet allows to suppress console output
 	Quiet *bool
 }

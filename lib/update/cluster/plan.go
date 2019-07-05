@@ -42,6 +42,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/gravitational/trace"
+	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -255,6 +256,7 @@ func NewOperationPlan(config PlanConfig) (*storage.OperationPlan, error) {
 		updateDNSApp:      updateDNSApp,
 		supportsTaints:    supportsTaints,
 		roles:             roles,
+		changesetID:       uuid.New(),
 	}
 
 	etcdVersion, err := shouldUpdateEtcd(builder)
@@ -263,7 +265,7 @@ func NewOperationPlan(config PlanConfig) (*storage.OperationPlan, error) {
 	}
 	builder.etcd = etcdVersion
 
-	if !requiresIntermediateRuntimeUpdate(*installedGravityVersion) {
+	if !requiresIntermediateRuntimeUpdate(builder.updateApp.Manifest) {
 		updates, err := configUpdates(
 			installedApp.Manifest, updateApp.Manifest,
 			config.Operator, config.Operation.Key(), servers)
@@ -283,7 +285,7 @@ func NewOperationPlan(config PlanConfig) (*storage.OperationPlan, error) {
 		return plan, nil
 	}
 
-	intermediates, updates, err := configUpdatesWithIntermediate(
+	intermediates, updates, err := configUpdatesWithIntermediateRuntime(
 		installedApp.Manifest, updateApp.Manifest,
 		config.Operator, config.Operation.Key(), servers)
 	if err != nil {
@@ -296,6 +298,7 @@ func NewOperationPlan(config PlanConfig) (*storage.OperationPlan, error) {
 	builder.intermediateServers = intermediates
 	builder.leadMaster = *leader
 	builder.servers = updates
+	builder.intermediateChangesetID = uuid.New()
 	plan, err := newOperationPlanWithIntermediateUpdate(builder)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -352,7 +355,6 @@ func newOperationPlan(builder phaseBuilder) (*storage.OperationPlan, error) {
 	initPhase := *builder.init()
 	checksPhase := *builder.checks().Require(initPhase)
 	preUpdatePhase := *builder.preUpdate().Require(initPhase)
-	bootstrapPhase := *builder.bootstrap().Require(initPhase)
 
 	var root update.Phase
 	root.Add(initPhase, checksPhase, preUpdatePhase)
@@ -374,12 +376,10 @@ func newOperationPlan(builder phaseBuilder) (*storage.OperationPlan, error) {
 		root.Add(*earlyDNSAppPhase)
 	}
 
-	root.Add(bootstrapPhase)
-
 	masters, nodes := update.SplitServers(builder.servers)
 	masters = reorderServers(masters, builder.leadMaster)
 	mastersPhase := *builder.masters(masters[0], masters[1:]).
-		Require(checksPhase, bootstrapPhase, preUpdatePhase)
+		Require(checksPhase, preUpdatePhase)
 	nodesPhase := *builder.nodes(masters[0], nodes).Require(mastersPhase)
 	if corednsPhase != nil {
 		mastersPhase.Require(*corednsPhase)
@@ -420,7 +420,6 @@ func newOperationPlanWithIntermediateUpdate(builder phaseBuilder) (*storage.Oper
 	initPhase := *builder.init()
 	checksPhase := *builder.checks().Require(initPhase)
 	preUpdatePhase := *builder.preUpdate().Require(initPhase)
-	bootstrapPhase := *builder.bootstrap().Require(initPhase)
 
 	var root update.Phase
 	root.Add(initPhase, checksPhase, preUpdatePhase)
@@ -436,12 +435,11 @@ func newOperationPlanWithIntermediateUpdate(builder phaseBuilder) (*storage.Oper
 		root.Add(*earlyDNSAppPhase)
 	}
 
-	root.Add(bootstrapPhase)
 	intermediateMasters, intermediateNodes := update.SplitServers(builder.intermediateServers)
 	intermediateMasters = reorderServers(intermediateMasters, builder.leadMaster)
 
 	intermediateMastersPhase := builder.mastersIntermediate(intermediateMasters[0], intermediateMasters[1:]).
-		Require(checksPhase, bootstrapPhase, preUpdatePhase)
+		Require(checksPhase, preUpdatePhase)
 	if corednsPhase != nil {
 		intermediateMastersPhase.Require(*corednsPhase)
 	}
@@ -574,8 +572,9 @@ func configUpdates(
 	return updates, nil
 }
 
-// configUpdates computes the configuration updates for the specified list of servers
-func configUpdatesWithIntermediate(
+// configUpdatesWithIntermediateRuntime computes the configuration updates for the specified list of servers
+// for the case when the plan needs to perform an intermediate runtime package update
+func configUpdatesWithIntermediateRuntime(
 	installed, update schema.Manifest,
 	operator packageRotator,
 	operation ops.SiteOperationKey,
@@ -608,10 +607,9 @@ func configUpdatesWithIntermediate(
 			return nil, nil, trace.Wrap(err)
 		}
 		configUpdate, err := operator.RotatePlanetConfig(ops.RotatePlanetConfigRequest{
-			Key:      operation,
-			Server:   server,
-			Manifest: update,
-			// FIXME: verify whether this will work for intermediate runtime package
+			Key:            operation,
+			Server:         server,
+			Manifest:       update,
 			RuntimePackage: *updateRuntime,
 			DryRun:         true,
 		})
@@ -636,10 +634,9 @@ func configUpdatesWithIntermediate(
 					ConfigPackage: configUpdate.Locator,
 				},
 			},
-			// FIXME: maybe move teleport update to the after step?
 			Teleport: storage.TeleportPackage{
 				Installed: *installedTeleport,
-				// FIXME: skip teleport update
+				// Skip teleport update
 			},
 		}
 		update := storage.UpdateServer{

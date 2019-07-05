@@ -147,6 +147,10 @@ type UpdateOperationData struct {
 	// The list might be a subset of all cluster servers in case
 	// the operation only operates on a specific part
 	Servers []UpdateServer `json:"updates,omitempty"`
+	// ChangesetID specifies the optional ID of the system update step.
+	// The ID should be unique within a given update operation as there might be
+	// multiple system update steps necessary
+	ChangesetID string `json:"changeset_id,omitempty"`
 }
 
 // UpdateServer describes an intent to update runtime/teleport configuration

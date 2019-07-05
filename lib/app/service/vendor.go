@@ -132,6 +132,9 @@ type VendorRequest struct {
 	// ProgressReporter is a special writer, if set, vendorer will output user-friendly
 	// information during vendoring
 	ProgressReporter utils.Progress
+	// SupportLegacyUpgrade specifies whether to generate an installer
+	// capable of updating a 5.0.x version
+	SupportLegacyUpgrade bool
 }
 
 // vendorer is a helper struct that encapsulates all services needed to vendor/rewrite images in
@@ -240,6 +243,9 @@ func (v *vendorer) VendorDir(ctx context.Context, unpackedDir string, req Vendor
 	}
 	if req.VendorRuntime {
 		manifestRewrites = append(manifestRewrites, fetchRuntimeImages(&runtimeImages))
+	}
+	if req.SupportLegacyUpgrade {
+		manifestRewrites = append(manifestRewrites, addIntermediateRuntime())
 	}
 
 	err = resourceFiles.RewriteManifest(manifestRewrites...)
@@ -678,6 +684,14 @@ func makeRewritePackagesMetadataFunc(packages pack.PackageService) resources.Man
 			log.Infof("Rewritten: %v -> %v.", dep, newLoc)
 			m.Dependencies.Apps[i].Locator = *newLoc
 		}
+		return nil
+	}
+}
+
+func addIntermediateRuntime() resources.ManifestRewriteFunc {
+	return func(m *schema.Manifest) error {
+		m.Dependencies.Packages = append(m.Dependencies.Packages,
+			schema.Dependency{Locator: loc.IntermediateRuntimePackage})
 		return nil
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/gravitational/gravity/lib/loc"
 	"github.com/gravitational/gravity/lib/ops"
 	"github.com/gravitational/gravity/lib/pack"
+	"github.com/gravitational/gravity/lib/schema"
 	"github.com/gravitational/gravity/lib/storage"
 	"github.com/gravitational/gravity/lib/update"
 	libphase "github.com/gravitational/gravity/lib/update/cluster/phases"
@@ -71,28 +72,20 @@ func (r phaseBuilder) checks() *update.Phase {
 	return &phase
 }
 
-func (r phaseBuilder) bootstrap() *update.Phase {
-	root := update.RootPhase(update.Phase{
+func (r phaseBuilder) bootstrap(server storage.UpdateServer) update.Phase {
+	return update.Phase{
 		ID:          "bootstrap",
-		Description: "Bootstrap update operation on nodes",
-	})
-
-	for i, server := range r.servers {
-		root.AddParallel(update.Phase{
-			ID:          root.ChildLiteral(server.Hostname),
-			Executor:    updateBootstrap,
-			Description: fmt.Sprintf("Bootstrap node %q", server.Hostname),
-			Data: &storage.OperationPhaseData{
-				ExecServer:       &r.servers[i].Server,
-				Package:          &r.updateApp.Package,
-				InstalledPackage: &r.installedApp.Package,
-				Update: &storage.UpdateOperationData{
-					Servers: []storage.UpdateServer{server},
-				},
+		Executor:    updateBootstrap,
+		Description: fmt.Sprintf("Bootstrap node %q", server.Hostname),
+		Data: &storage.OperationPhaseData{
+			ExecServer:       &server.Server,
+			Package:          &r.updateApp.Package,
+			InstalledPackage: &r.installedApp.Package,
+			Update: &storage.UpdateOperationData{
+				Servers: []storage.UpdateServer{server},
 			},
-		})
+		},
 	}
-	return &root
 }
 
 func (r phaseBuilder) preUpdate() *update.Phase {
@@ -251,7 +244,7 @@ func (r phaseBuilder) masters(leadMaster storage.UpdateServer, otherMasters []st
 		ID:          "masters",
 		Description: "Update master nodes",
 	})
-	return r.mastersInternal(leadMaster, otherMasters, &root)
+	return r.mastersInternal(leadMaster, otherMasters, &root, r.changesetID)
 }
 
 func (r phaseBuilder) mastersIntermediate(leadMaster storage.UpdateServer, otherMasters []storage.UpdateServer) *update.Phase {
@@ -259,11 +252,12 @@ func (r phaseBuilder) mastersIntermediate(leadMaster storage.UpdateServer, other
 		ID:          "masters-intermediate",
 		Description: "Update master nodes to intermediate runtime",
 	})
-	return r.mastersInternal(leadMaster, otherMasters, &root)
+	return r.mastersInternal(leadMaster, otherMasters, &root, r.intermediateChangesetID)
 }
 
-func (r phaseBuilder) mastersInternal(leadMaster storage.UpdateServer, otherMasters []storage.UpdateServer, root *update.Phase) *update.Phase {
+func (r phaseBuilder) mastersInternal(leadMaster storage.UpdateServer, otherMasters []storage.UpdateServer, root *update.Phase, changesetID string) *update.Phase {
 	node := r.node(leadMaster.Server, root, "Update system software on master node %q")
+	node.Add(r.bootstrap(leadMaster))
 	if len(otherMasters) != 0 {
 		node.AddSequential(update.Phase{
 			ID:          "kubelet-permissions",
@@ -271,14 +265,15 @@ func (r phaseBuilder) mastersInternal(leadMaster storage.UpdateServer, otherMast
 			Description: fmt.Sprintf("Add permissions to kubelet on %q", leadMaster.Hostname),
 			Data: &storage.OperationPhaseData{
 				Server: &leadMaster.Server,
-			}})
+			},
+		})
 
 		// election - stepdown first node we will upgrade
 		node.AddSequential(setLeaderElection(enable(), disable(leadMaster), leadMaster.Server,
 			"stepdown", "Step down %q as Kubernetes leader"))
 	}
 
-	node.AddSequential(r.commonNode(leadMaster, &leadMaster.Server, waitsForEndpoints(len(otherMasters) == 0))...)
+	node.AddSequential(r.commonNode(leadMaster, &leadMaster.Server, waitsForEndpoints(len(otherMasters) == 0), changesetID)...)
 	root.AddSequential(node)
 
 	if len(otherMasters) != 0 {
@@ -289,7 +284,8 @@ func (r phaseBuilder) mastersInternal(leadMaster storage.UpdateServer, otherMast
 
 	for i, server := range otherMasters {
 		node = r.node(server.Server, root, "Update system software on master node %q")
-		node.AddSequential(r.commonNode(otherMasters[i], &leadMaster.Server, waitsForEndpoints(true))...)
+		node.Add(r.bootstrap(server))
+		node.AddSequential(r.commonNode(otherMasters[i], &leadMaster.Server, waitsForEndpoints(true), changesetID)...)
 		// election - enable election on the upgraded node
 		node.AddSequential(setLeaderElection(enable(server), disable(), server.Server, "enable", "Enable leader election on node %q"))
 		root.AddSequential(node)
@@ -302,7 +298,7 @@ func (r phaseBuilder) nodes(leadMaster storage.UpdateServer, nodes []storage.Upd
 		ID:          "nodes",
 		Description: "Update regular nodes",
 	})
-	return r.nodesInternal(leadMaster, nodes, &root)
+	return r.nodesInternal(leadMaster, nodes, &root, r.changesetID)
 }
 
 func (r phaseBuilder) nodesIntermediate(leadMaster storage.UpdateServer, nodes []storage.UpdateServer) *update.Phase {
@@ -310,13 +306,14 @@ func (r phaseBuilder) nodesIntermediate(leadMaster storage.UpdateServer, nodes [
 		ID:          "nodes-intermediate",
 		Description: "Update regular nodes to intermediate runtime",
 	})
-	return r.nodesInternal(leadMaster, nodes, &root)
+	return r.nodesInternal(leadMaster, nodes, &root, r.intermediateChangesetID)
 }
 
-func (r phaseBuilder) nodesInternal(leadMaster storage.UpdateServer, nodes []storage.UpdateServer, root *update.Phase) *update.Phase {
+func (r phaseBuilder) nodesInternal(leadMaster storage.UpdateServer, nodes []storage.UpdateServer, root *update.Phase, changesetID string) *update.Phase {
 	for i, server := range nodes {
 		node := r.node(server.Server, root, "Update system software on node %q")
-		node.AddSequential(r.commonNode(nodes[i], &leadMaster.Server, waitsForEndpoints(true))...)
+		node.Add(r.bootstrap(server))
+		node.AddSequential(r.commonNode(nodes[i], &leadMaster.Server, waitsForEndpoints(true), changesetID)...)
 		root.AddParallel(node)
 	}
 	return root
@@ -490,7 +487,7 @@ func (r phaseBuilder) node(server storage.Server, parent update.ParentPhase, for
 }
 
 // commonNode returns a list of operations required for any node role to upgrade its system software
-func (r phaseBuilder) commonNode(server storage.UpdateServer, executor *storage.Server, waitsForEndpoints waitsForEndpoints) []update.Phase {
+func (r phaseBuilder) commonNode(server storage.UpdateServer, executor *storage.Server, waitsForEndpoints waitsForEndpoints, changesetID string) []update.Phase {
 	phases := []update.Phase{
 		{
 			ID:          "drain",
@@ -508,7 +505,8 @@ func (r phaseBuilder) commonNode(server storage.UpdateServer, executor *storage.
 			Data: &storage.OperationPhaseData{
 				ExecServer: &server.Server,
 				Update: &storage.UpdateOperationData{
-					Servers: []storage.UpdateServer{server},
+					Servers:     []storage.UpdateServer{server},
+					ChangesetID: changesetID,
 				},
 			},
 		},
@@ -600,14 +598,7 @@ type phaseBuilder struct {
 	// for the intermediate runtime update. Will be empty if intermediate update
 	// step is not required
 	intermediateServers []storage.UpdateServer
-
-	// FIXME: remove me
-	// intermediateLeadMaster is the leader node for the intermediate runtime update.
-	// if identifies the same server as leadMaster but is augmented to update to the
-	// intermediate runtime package
-	// intermediateLeadMaster *storage.UpdateServer
 	// installedRuntime is the runtime of the installed app
-
 	installedRuntime app.Application
 	// installedApp is the installed app
 	installedApp app.Application
@@ -643,6 +634,10 @@ type phaseBuilder struct {
 	supportsTaints bool
 	// roles is the existing cluster roles
 	roles []teleservices.Role
+	// changesetID specifies the ID to assign the final system update step
+	changesetID string
+	// intermediateChangesetID specifies the ID to assign the intermediate system update step
+	intermediateChangesetID string
 }
 
 type etcdVersion struct {
@@ -685,8 +680,9 @@ func supportsTaints(version semver.Version) (supports bool) {
 	return defaults.BaseTaintsVersion.Compare(version) <= 0
 }
 
-func requiresIntermediateRuntimeUpdate(version semver.Version) (ok bool) {
-	return version.Compare(*defaults.BaseIntermediateRuntimeVersion) <= 0
+func requiresIntermediateRuntimeUpdate(updateManifest schema.Manifest) (ok bool) {
+	loc, _ := updateManifest.Dependencies.Has(loc.IntermediateRuntimePackage)
+	return loc != nil
 }
 
 func shouldUpdateEtcd(b phaseBuilder) (*etcdVersion, error) {

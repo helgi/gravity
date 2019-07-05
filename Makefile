@@ -44,7 +44,7 @@ TELEPORT_TAG = 3.0.5
 TELEPORT_REPOTAG := v$(TELEPORT_TAG)
 PLANET_TAG := 5.5.20-$(K8S_VER_SUFFIX)
 PLANET_BRANCH := $(PLANET_TAG)
-PLANET_BRIDGE_TAG := 5.2.23-11109
+PLANET_LEGACY_TAG := 5.2.23-11109
 K8S_APP_TAG := $(GRAVITY_TAG)
 TELEKUBE_APP_TAG := $(GRAVITY_TAG)
 WORMHOLE_APP_TAG := $(GRAVITY_TAG)
@@ -74,7 +74,7 @@ TF_PROVIDER_GRAVITY_PKG := gravitational.io/terraform-provider-gravity_$(OS)_$(A
 TF_PROVIDER_GRAVITYENTERPRISE_PKG := gravitational.io/terraform-provider-gravityenterprise_$(OS)_$(ARCH):$(GRAVITY_TAG)
 TELEPORT_PKG := gravitational.io/teleport:$(TELEPORT_TAG)
 PLANET_PKG := gravitational.io/planet:$(PLANET_TAG)
-PLANET_BRIDGE_PKG := gravitational.io/planet:$(PLANET_BRIDGE_TAG)
+PLANET_LEGACY_PKG := gravitational.io/planet:$(PLANET_LEGACY_TAG)
 WEB_ASSETS_PKG := gravitational.io/web-assets:$(GRAVITY_TAG)
 GRAVITY_PKG := gravitational.io/gravity:$(GRAVITY_TAG)
 DNS_APP_PKG := gravitational.io/dns-app:$(DNS_APP_TAG)
@@ -102,7 +102,7 @@ PLANET_DIR := $(BUILDDIR)/planet
 PLANET_SRCDIR := $(PLANET_DIR)/src
 PLANET_BUILDDIR := $(PLANET_DIR)/$(PLANET_TAG)
 PLANET_BINDIR := $(PLANET_BUILDDIR)/bin
-PLANET_BRIDGE_BINDIR := $(PLANET_DIR)/$(PLANET_BRIDGE_TAG)/bin
+PLANET_LEGACY_BINDIR := $(PLANET_DIR)/$(PLANET_LEGACY_TAG)/bin
 TELEPORT_BUILDDIR := $(BUILDDIR)/teleport
 TELEPORT_SRCDIR := $(TELEPORT_BUILDDIR)/src
 TELEPORT_BINDIR := $(TELEPORT_BUILDDIR)/bin/$(TELEPORT_TAG)
@@ -121,7 +121,7 @@ PACKAGES_DIR ?= $(GRAVITY_BUILDDIR)/packages
 TELEPORT_TARBALL := teleport-$(TELEPORT_TAG).tar.gz
 TELEPORT_OUT := $(BUILDDIR)/$(TELEPORT_TARBALL)
 PLANET_OUT := $(PLANET_BINDIR)/planet.tar.gz
-PLANET_BRIDGE_OUT := $(PLANET_BRIDGE_BINDIR)/planet.tar.gz
+PLANET_LEGACY_OUT := $(PLANET_LEGACY_BINDIR)/planet.tar.gz
 LOGGING_APP_OUT := $(BUILDDIR)/logging-app-$(LOGGING_APP_TAG).tar.gz
 MONITORING_APP_OUT := $(BUILDDIR)/monitoring-app-$(MONITORING_APP_TAG).tar.gz
 BANDWAGON_OUT := $(BUILDDIR)/bandwagon-$(BANDWAGON_TAG).tar.gz
@@ -341,12 +341,7 @@ ci:
 #
 .PHONY: packages
 packages:
-	if [ -z "$(DEV_PLANET)" ]; then \
-	  $(MAKE) planet-package && \
-	  $(MAKE) planet-bridge-package; \
-	else \
-	  $(MAKE) dev-planet-package; \
-	fi;
+	$(MAKE) planet-packages
 
 # binary packages for quick download
 	$(MAKE) binary-packages
@@ -379,6 +374,15 @@ packages:
 	-$(MAKE) k8s-packages
 	-$(MAKE) telekube-packages
 
+
+.PHONY: planet-packages
+planet-packages:
+	if [ -z "$(DEV_PLANET)" ]; then \
+	  $(MAKE) planet-package && \
+	  $(MAKE) planet-legacy-package; \
+	else \
+	  $(MAKE) dev-planet-package; \
+	fi;
 
 
 .PHONY: binary-packages
@@ -423,10 +427,10 @@ planet-package:
 		--labels=purpose:runtime \
 		--ops-url=$(OPS_URL)
 
-.PHONY: planet-bridge-package
-planet-bridge-package:
-	$(GRAVITY) package delete $(PLANET_BRIDGE_PKG) $(DELETE_OPTS) && \
-	$(GRAVITY) package import $(PLANET_BRIDGE_OUT) $(PLANET_BRIDGE_PKG) \
+.PHONY: planet-legacy-package
+planet-legacy-package:
+	$(GRAVITY) package delete $(PLANET_LEGACY_PKG) $(DELETE_OPTS) && \
+	$(GRAVITY) package import $(PLANET_LEGACY_OUT) $(PLANET_LEGACY_PKG) \
 		--labels=purpose:runtime \
 		--ops-url=$(OPS_URL)
 
@@ -466,6 +470,10 @@ publish-artifacts: opscenter telekube
 telekube: GRAVITY=$(GRAVITY_OUT) --state-dir=$(PACKAGES_DIR)
 telekube: $(GRAVITY_BUILDDIR)/telekube.tar
 
+.PHONY: telekube-legacy-upgrade
+telekube-legacy-upgrade: GRAVITY=$(GRAVITY_OUT) --state-dir=$(PACKAGES_DIR)
+telekube-legacy-upgrade: $(GRAVITY_BUILDDIR)/telekube-legacy-upgrade.tar
+
 $(GRAVITY_BUILDDIR)/telekube.tar: packages
 	GRAVITY_K8S_VERSION=$(K8S_VER) $(GRAVITY_BUILDDIR)/tele build \
 		$(ASSETSDIR)/telekube/resources/app.yaml -f \
@@ -474,6 +482,14 @@ $(GRAVITY_BUILDDIR)/telekube.tar: packages
 		--skip-version-check \
 		-o $(GRAVITY_BUILDDIR)/telekube.tar
 
+$(GRAVITY_BUILDDIR)/telekube-legacy-upgrade.tar: packages
+	GRAVITY_K8S_VERSION=$(K8S_VER) $(GRAVITY_BUILDDIR)/tele build \
+		$(ASSETSDIR)/telekube/resources/app.yaml -f \
+		--version=$(TELEKUBE_APP_TAG) \
+		--state-dir=$(PACKAGES_DIR) \
+		--skip-version-check \
+		--support-legacy-upgrade \
+		-o $(GRAVITY_BUILDDIR)/telekube.tar
 
 #
 # builds wormhole installer
