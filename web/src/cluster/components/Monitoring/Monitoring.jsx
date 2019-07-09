@@ -166,6 +166,32 @@ const grafanaStyleOverrides = `
     .grafana-app > sidemenu {
       display: none;
     }
+
+    .main-view {
+      background: #1B234A !important;
+    }
+
+    .panel-container {
+      background-color: #0C143D;
+      border: none;
+    }
+
+    .navbar-button {
+      border: none !important;
+      background: #0C143D !important;
+    }
+
+    .gf-form-label {
+      background: #0C143D !important;
+      color: #FFF !important;
+      border: none !important;
+    }
+
+    .variable-value-link {
+      background: #0C143D !important;
+      border: none !important;
+    }
+
   </style>
 `
 
