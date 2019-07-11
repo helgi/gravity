@@ -341,7 +341,6 @@ func extractFile(tarball *tar.Reader, header *tar.Header, dir, path string) erro
 	case tar.TypeBlock, tar.TypeChar, tar.TypeReg, tar.TypeRegA, tar.TypeFifo:
 		return writeFile(targetPath, tarball, header.FileInfo().Mode())
 	case tar.TypeLink:
-		// FIXME: Linkname
 		return writeHardLink(targetPath, filepath.Join(dir, header.Linkname))
 	case tar.TypeSymlink:
 		return writeSymbolicLink(targetPath, header.Linkname)
