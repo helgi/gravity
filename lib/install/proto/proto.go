@@ -78,7 +78,7 @@ func (r *ExecuteRequest_Phase) IsResume() bool {
 }
 
 // WrapServiceError returns an error from service optionally
-// translating it to another representation if required
+// translating it to a more appropriate representation if required
 func WrapServiceError(err error) error {
 	if IsFailedPreconditionError(err) {
 		return utils.NewExitCodeErrorWithMessage(
@@ -102,7 +102,7 @@ func IsCompletedError(err error) bool {
 	return trace.Unwrap(err) == ErrCompleted
 }
 
-// IsRPCError returns true if the specified error is an RPC error
+// IsRPCError returns true if the specified error is a gRPC error
 func IsRPCError(err error) bool {
 	_, ok := status.FromError(trace.Unwrap(err))
 	return ok
