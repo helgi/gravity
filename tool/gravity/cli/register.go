@@ -27,6 +27,7 @@ import (
 	"github.com/gravitational/gravity/lib/loc"
 	"github.com/gravitational/gravity/lib/modules"
 	"github.com/gravitational/gravity/lib/schema"
+	"github.com/gravitational/gravity/lib/storage"
 	"github.com/gravitational/gravity/lib/utils"
 	"github.com/gravitational/gravity/tool/common"
 
@@ -152,6 +153,10 @@ func RegisterCommands(app *kingpin.Application) *Application {
 	g.PlanRollbackCmd.Phase = g.PlanRollbackCmd.Flag("phase", "Phase ID to execute").String()
 	g.PlanRollbackCmd.Force = g.PlanRollbackCmd.Flag("force", "Force rollback of specified phase").Bool()
 	g.PlanRollbackCmd.PhaseTimeout = g.PlanRollbackCmd.Flag("timeout", "Phase timeout").Default(defaults.PhaseTimeout).Hidden().Duration()
+
+	g.PlanSetCmd.CmdClause = g.PlanCmd.Command("set", "Set specified phase state without executing it").Hidden()
+	g.PlanSetCmd.Phase = g.PlanSetCmd.Flag("phase", "Phase ID to set state for").String()
+	g.PlanSetCmd.State = g.PlanSetCmd.Flag("state", fmt.Sprintf("New phase state, one of: %v", storage.OperationPhaseStates)).String()
 
 	g.PlanResumeCmd.CmdClause = g.PlanCmd.Command("resume", "Resume last aborted operation")
 	g.PlanResumeCmd.Force = g.PlanResumeCmd.Flag("force", "Force execution of specified phase").Bool()

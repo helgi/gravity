@@ -123,6 +123,19 @@ func (i *Installer) Execute(req *installpb.ExecuteRequest, stream installpb.Agen
 	}
 }
 
+// SetPhase sets phase state without executing it.
+func (i *Installer) SetPhase(req *installpb.SetRequest) error {
+	i.WithField("req", req).Info("Set phase.")
+	machine, err := i.config.FSMFactory.NewFSM(i.config.Operator, req.Phase.Key)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	return machine.ChangePhaseState(i.Context, fsm.StateChange{
+		Phase: req.Phase.ID,
+		State: req.State,
+	})
+}
+
 // Complete manually completes the operation given with key.
 // Implements server.Executor
 func (i *Installer) Complete(key ops.SiteOperationKey) error {

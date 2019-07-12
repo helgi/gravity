@@ -366,6 +366,12 @@ func Execute(g *Application, cmd string, extraArgs []string) (err error) {
 				SkipVersionCheck: *g.PlanCmd.SkipVersionCheck,
 				OperationID:      *g.PlanCmd.OperationID,
 			})
+	case g.PlanSetCmd.FullCommand():
+		return setPhase(localEnv, g, SetPhaseParams{
+			OperationID: *g.PlanCmd.OperationID,
+			PhaseID:     *g.PlanSetCmd.Phase,
+			State:       *g.PlanCmd.State,
+		})
 	case g.PlanResumeCmd.FullCommand():
 		return resumeOperation(localEnv, g,
 			PhaseParams{
@@ -374,7 +380,6 @@ func Execute(g *Application, cmd string, extraArgs []string) (err error) {
 				SkipVersionCheck: *g.PlanCmd.SkipVersionCheck,
 				OperationID:      *g.PlanCmd.OperationID,
 			})
-
 	case g.PlanRollbackCmd.FullCommand():
 		return rollbackPhase(localEnv, g,
 			PhaseParams{

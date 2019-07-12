@@ -71,6 +71,19 @@ func (r *Client) ExecutePhase(ctx context.Context, phase Phase) error {
 	})
 }
 
+// SetPhase sets the specified phase state without executing it
+func (r *Client) SetPhase(ctx context.Context, phase Phase, state string) error {
+	r.WithField("phase", phase).WithField("state", state).Info("Set.")
+	_, err := r.client.Set(ctx, &installpb.SetRequest{
+		Phase: &installpb.Phase{
+			Key: installpb.KeyToProto(phase.Key),
+			ID:  phase.ID,
+		},
+		State: state,
+	})
+	return trace.Wrap(err)
+}
+
 // RollbackPhase rolls back the specified phase
 func (r *Client) RollbackPhase(ctx context.Context, phase Phase) error {
 	r.WithField("phase", phase).Info("Rollback.")

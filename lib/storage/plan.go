@@ -334,3 +334,12 @@ const (
 	// OperationPhaseStateRolledBack means that the phase or all of its subphases have been rolled back
 	OperationPhaseStateRolledBack = "rolled_back"
 )
+
+// OperationPhaseStates is a list of all supported phase states.
+var OperationPhaseStates = []string{
+	OperationPhaseStateUnstarted,
+	OperationPhaseStateInProgress,
+	OperationPhaseStateCompleted,
+	OperationPhaseStateFailed,
+	OperationPhaseStateRolledBack,
+}

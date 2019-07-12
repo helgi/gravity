@@ -169,6 +169,23 @@ func (p *Peer) Execute(req *installpb.ExecuteRequest, stream installpb.Agent_Exe
 	return nil
 }
 
+// SetPhase sets phase state without executing it.
+func (p *Peer) SetPhase(req *installpb.SetRequest) error {
+	p.WithField("req", req).Info("Set phase.")
+	ctx, err := p.tryConnect(opKey.OperationID)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	machine, err := p.getFSM(*ctx)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	return machine.ChangePhaseState(i.Context, fsm.StateChange{
+		Phase: req.Phase.ID,
+		State: req.State,
+	})
+}
+
 // Complete manually completes the operation given with opKey.
 // Implements server.Executor
 func (p *Peer) Complete(opKey ops.SiteOperationKey) error {

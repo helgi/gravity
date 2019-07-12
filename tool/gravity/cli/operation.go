@@ -54,6 +54,16 @@ func (r PhaseParams) isResume() bool {
 	return r.PhaseID == fsm.RootPhase
 }
 
+// SetPhaseParams contains parameters for setting phase state.
+type SetPhaseParams struct {
+	// OperationID is an optional ID of the operation the phase belongs to.
+	OperationID string
+	// PhaseID is ID of the phase to set the state.
+	PhaseID string
+	// State is the new phase state.
+	State string
+}
+
 // resumeOperation resumes the operation specified with params
 func resumeOperation(localEnv *localenv.LocalEnvironment, environ LocalEnvironmentFactory, params PhaseParams) error {
 	err := executePhase(localEnv, environ, PhaseParams{
@@ -94,6 +104,28 @@ func executePhase(localEnv *localenv.LocalEnvironment, environ LocalEnvironmentF
 		return executeGarbageCollectPhase(localEnv, params, op)
 	default:
 		return trace.BadParameter("operation type %q does not support plan execution", op.Type)
+	}
+}
+
+// setPhase sets the specified phase state without executing it.
+func setPhase(localEnv *localenv.LocalEnvironment, environ LocalEnvironmentFactory, params SetPhaseParams) error {
+	op, err := getActiveOperation(localEnv, environ, params.OperationID)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	switch op.Type {
+	case ops.OperationInstall, ops.OperationExpand:
+		return setPhaseFromService(localEnv, params, op)
+	case ops.OperationUpdate:
+		return setUpdatePhase(localEnv, environ, params, *op)
+	case ops.OperationUpdateRuntimeEnviron:
+		return setEnvironPhase(localEnv, environ, params, *op)
+	case ops.OperationUpdateConfig:
+		return setConfigPhase(localEnv, environ, params, *op)
+	case ops.OperationGarbageCollect:
+		return setGarbageCollectPhase(localEnv, params, op)
+	default:
+		return trace.BadParameter("operation type %q does not support setting phase state", op.Type)
 	}
 }
 
